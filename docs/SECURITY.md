@@ -11,7 +11,7 @@ The full candidate, including `correct` and `correctText`, is embedded in the pr
 The rendered prompt is sent only to the selected local runtime:
 
 - fixture: no subprocess; a fixed classifier reads the parsed object
-- bitnet: the prompt is one argv element of the verified `--prompt` / `-p` flag, because that is the flag upstream `run_inference.py` advertises
+- bitnet: the prompt is one argv element of the verified `--prompt` / `-p` flag, because that is the flag upstream `run_inference.py` advertises. When the verified executable advertises `--json-schema`, this project's own output contract (`protocol.OUTPUT_KEYS` and its enums, with the candidate's `id` pinned) is passed as a second argv element, built from the fixed contract and the candidate's own id, never from other candidate text
 - command: the prompt is the child process stdin
 
 The prompt can appear in the process list for the BitNet path. Do not log it. This runner does not write the prompt to stderr.

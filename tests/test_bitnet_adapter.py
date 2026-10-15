@@ -9,11 +9,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import support
 
 from local_llm_review.metadata import RunSettings
-from local_llm_review.protocol import parse_model_output
+from local_llm_review.protocol import OUTPUT_KEYS, parse_model_output
 from local_llm_review.runtimes.bitnet import (
+    BitNetRuntime,
+    OUTPUT_JSON_SCHEMA_TEXT,
     _flag_advertised,
     build_argv,
     format_temperature,
+    strip_eog_marker,
     verify_bitnet,
 )
 
@@ -39,9 +42,12 @@ optional arguments:
 """
 
 
-def write_runtime(directory: Path, name: str, help_text: str, *, llama: bool) -> Path:
+def write_runtime(
+    directory: Path, name: str, help_text: str, *, llama: bool, eog_marker: bool = False
+) -> Path:
     path = directory / name
     stamp = directory / "invoked.jsonl"
+    trailer = "\nsys.stdout.write(' [end of text]\\n\\n\\n')\n" if eog_marker else ""
     path.write_text(
         "#!/usr/bin/env python3\n"
         "import json, os, re, sys\n"
@@ -67,7 +73,7 @@ def write_runtime(directory: Path, name: str, help_text: str, *, llama: bool) ->
         "    'jurisdictionRisk': 'none',\n"
         "    'figureRightsWarning': 'none',\n"
         "    'rationale': 'Advisory only: stub; this is not publication approval.',\n"
-        "}, sys.stdout)\n"
+        "}, sys.stdout)\n" + trailer
     )
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
     if llama:
@@ -227,6 +233,86 @@ class BitNetAdapterTest(unittest.TestCase):
             self.assertTrue(info.seed_applied)
             self.assertEqual(info.gpu_layers, 4)
             self.assertTrue(info.support_claimed)
+
+    def test_no_conversation_flag_is_always_passed_when_advertised(self):
+        # llama-completion (the one-shot replacement for llama-cli observed
+        # 2026-10-12) crashes on an instruct model's chat template unless
+        # -no-cnv is passed, even though nothing in RunSettings asks for it.
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            help_text = UPSTREAM_HELP + "  -no-cnv, --no-conversation\n                        Disable conversation mode\n"
+            executable = write_runtime(directory, "llama-completion", help_text, llama=False)
+            verification = verify_bitnet(executable=str(executable), model=str(directory / "model.gguf"))
+            self.assertTrue(verification.supported, verification.reason)
+            self.assertEqual(verification.no_cnv_flag, "--no-conversation")
+            self.assertTrue(
+                any("--no-conversation" in item for item in verification.limitations)
+            )
+            argv, info = build_argv(verification, "prompt text", RunSettings(temperature=0))
+            self.assertIn("--no-conversation", argv)
+            self.assertIn("--no-conversation", info.flags_passed)
+
+    def test_no_display_prompt_is_always_passed_when_advertised(self):
+        # llama-completion echoes the input prompt onto stdout by default,
+        # which is never valid JSON on its own.
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            help_text = UPSTREAM_HELP + "  --no-display-prompt\n                        Do not print the prompt\n"
+            executable = write_runtime(directory, "llama-completion", help_text, llama=False)
+            verification = verify_bitnet(executable=str(executable), model=str(directory / "model.gguf"))
+            self.assertTrue(verification.supported, verification.reason)
+            self.assertEqual(verification.no_display_prompt_flag, "--no-display-prompt")
+            argv, info = build_argv(verification, "prompt text", RunSettings(temperature=0))
+            self.assertIn("--no-display-prompt", argv)
+            self.assertIn("--no-display-prompt", info.flags_passed)
+
+    def test_json_schema_is_always_passed_with_the_output_contract_when_advertised(self):
+        # Unconstrained decoding was not reliable enough to produce JSON at
+        # all on the one model tried; grammar-constrained decoding fixed it.
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            help_text = UPSTREAM_HELP + "  --json-schema SCHEMA\n                        Constrain generation to a JSON schema\n"
+            executable = write_runtime(directory, "llama-completion", help_text, llama=False)
+            verification = verify_bitnet(executable=str(executable), model=str(directory / "model.gguf"))
+            self.assertTrue(verification.supported, verification.reason)
+            self.assertEqual(verification.json_schema_flag, "--json-schema")
+            argv, info = build_argv(verification, "prompt text", RunSettings(temperature=0))
+            self.assertIn("--json-schema", argv)
+            self.assertEqual(argv[argv.index("--json-schema") + 1], OUTPUT_JSON_SCHEMA_TEXT)
+            self.assertIn("--json-schema", info.flags_passed)
+            schema = json.loads(OUTPUT_JSON_SCHEMA_TEXT)
+            self.assertEqual(set(schema["required"]), set(OUTPUT_KEYS))
+            self.assertFalse(schema["additionalProperties"])
+            # With a record id, the schema constrains id to that exact value
+            # instead of the generic any-nonempty-string fallback above.
+            argv_for_record, _ = build_argv(
+                verification, "prompt text", RunSettings(temperature=0), record_id="SYN07"
+            )
+            record_schema = json.loads(argv_for_record[argv_for_record.index("--json-schema") + 1])
+            self.assertEqual(record_schema["properties"]["id"], {"enum": ["SYN07"]})
+
+    def test_strip_eog_marker_removes_only_the_known_llama_cpp_suffix(self):
+        self.assertEqual(strip_eog_marker('{"a": 1} [end of text]\n\n\n'), '{"a": 1}')
+        self.assertEqual(strip_eog_marker('{"a": 1}'), '{"a": 1}')
+        self.assertEqual(strip_eog_marker("no marker here"), "no marker here")
+
+    def test_complete_strips_the_eog_marker_before_parsing(self):
+        # Simulates llama-completion's real behavior: valid JSON followed by
+        # its hardcoded " [end of text]" line. Without stripping, this is
+        # "Extra data" to the strict parser even though the JSON is perfect.
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            executable = write_runtime(
+                directory, "llama-completion", UPSTREAM_HELP, llama=False, eog_marker=True
+            )
+            verification = verify_bitnet(executable=str(executable), model=str(directory / "model.gguf"))
+            self.assertTrue(verification.supported, verification.reason)
+            runtime = BitNetRuntime(verification, RunSettings(temperature=0))
+            raw = runtime.complete(
+                candidate={"id": "SYN01"}, prompt='"id":"SYN01"', settings=RunSettings(temperature=0)
+            )
+            record = parse_model_output(raw, expected_id="SYN01")
+            self.assertEqual(record["id"], "SYN01")
 
     def test_requested_gpu_layers_without_a_flag_are_refused(self):
         with tempfile.TemporaryDirectory() as tmp:

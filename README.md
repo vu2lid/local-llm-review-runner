@@ -41,10 +41,10 @@ That install is optional. The fixture works from `bin/local-llm-review` without 
 
 ```sh
 local-llm-review doctor
-local-llm-review doctor --runtime bitnet --executable /path/to/run_inference.py --model /path/to/model.gguf
+local-llm-review doctor --runtime bitnet --executable /path/to/BitNet/build/bin/llama-completion --model /path/to/model.gguf
 local-llm-review run --runtime fixture --metadata /tmp/local-llm-review-metadata.json
 local-llm-review run --runtime bitnet \
-  --executable /path/to/BitNet/run_inference.py \
+  --executable /path/to/BitNet/build/bin/llama-completion \
   --model /path/to/ggml-model-i2_s.gguf \
   --model-id BitNet-b1.58-2B-4T \
   --temperature 0 --seed 42 --context 2048 --max-tokens 256 --threads 2 \

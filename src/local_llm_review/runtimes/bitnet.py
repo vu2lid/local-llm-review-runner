@@ -14,10 +14,46 @@ That script launches ./build/bin/llama-cli relative to the process working
 directory and lets llama-cli write to the inherited stdout. A verified flag
 interface is not a claim that generation stdout is clean JSON. Non-JSON
 stdout fails closed in the runner.
+
+Observed 2026-10-12 against a llama.cpp checkout built from the BitNet
+submodule pin (commit 390c307): llama-cli no longer exits after one
+completion. With or without -no-cnv it drops into the interactive chat
+REPL and only returns on EOF or the per-record timeout, so run_inference.py
+(which always targets llama-cli) hangs every record on that build. The same
+tree's llama-completion binary is the one-shot replacement, but it
+auto-enables conversation mode whenever the model carries a chat template
+(BitNet-b1.58-2B-4T does) and aborts with an unhandled exception applying
+that template unless -no-cnv is passed explicitly. Point --executable at
+build/bin/llama-completion directly for that build. Whenever the installed
+executable's help advertises -no-cnv/--no-conversation, this adapter always
+passes it (see NO_CONVERSATION_CANDIDATES below) so single-shot output stays
+reliable on either binary; it is a no-op warning on the older llama-cli.
+
+Observed 2026-10-13, same build: llama-completion defaults to echoing the
+full input prompt onto stdout before the generated text, which is never
+valid JSON on its own and breaks the one-object-only contract. Whenever the
+help advertises --no-display-prompt, this adapter always passes it too (see
+NO_DISPLAY_PROMPT_CANDIDATES). Separately, unconstrained decoding of this
+project's full review prompt did not reliably produce JSON at all on the
+one small model tried (BitNet-b1.58-2B-4T): greedy sampling answered in
+prose and then looped. llama-completion's --json-schema (grammar-constrained
+decoding) fixed that completely in that same test, forcing the output to
+match this project's exact output contract (see OUTPUT_JSON_SCHEMA_TEXT).
+Whenever the help advertises --json-schema, this adapter always passes that
+schema (see JSON_SCHEMA_CANDIDATES) for the same reason it always passes
+-no-cnv: a one-shot classification task has no use for the alternative.
+One more wrinkle, independent of which model is loaded: on a normal
+end-of-generation stop, llama-completion (and, per its source, llama-cli)
+always prints a literal " [end of text]" line after the content with no
+flag to suppress only that (--log-disable exists but silences the
+generated content too). strip_eog_marker removes just that fixed suffix
+before the runner's strict parser ever sees the text; BitNetRuntime.complete
+applies it unconditionally, and it is a no-op when the suffix is absent.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -27,6 +63,12 @@ from typing import Any
 from local_llm_review.errors import BitNetUnavailable, ProtocolError, RuntimeFailed, RuntimeTimeout
 from local_llm_review.metadata import RuntimeInfo
 from local_llm_review.process import capture_process, run_process
+from local_llm_review.protocol import (
+    FIGURE_WARNINGS,
+    JURISDICTION_RISKS,
+    OUTPUT_KEYS,
+    RECOMMENDATIONS,
+)
 
 # Role -> aliases, first advertised alias wins. Order is a preference among
 # flags the installed help actually prints, not permission to invent one.
@@ -42,8 +84,60 @@ FLAG_CANDIDATES: dict[str, tuple[str, ...]] = {
 }
 REQUIRED_ROLES = ("model", "prompt", "max_tokens", "threads", "context", "temperature")
 NEVER_PASS = ("-cnv", "--conversation")
+# Not roles in FLAG_CANDIDATES: these are passed on every invocation (not
+# just when the caller asks for it) whenever the installed executable's
+# help advertises them. See the module docstring.
+NO_CONVERSATION_CANDIDATES = ("--no-conversation", "-no-cnv")
+NO_DISPLAY_PROMPT_CANDIDATES = ("--no-display-prompt",)
+JSON_SCHEMA_CANDIDATES = ("--json-schema",)
 HELP_TIMEOUT_S = 20.0
 HELP_BYTE_LIMIT = 1_000_000
+
+# This project's exact model-output contract (protocol.OUTPUT_KEYS and its
+# enums), expressed as a JSON Schema for grammar-constrained decoding.
+# sorted() on the enum sets keeps the serialized schema stable run to run.
+# id is constrained to the exact expected value when known: downstream
+# validation already rejects a wrong id, but letting the grammar force it
+# catches the failure as a generation-time constraint instead, and skips a
+# whole class of "right shape, wrong id" output the grammar could otherwise
+# let through (observed 2026-10-13: BitNet-b1.58-2B-4T filled id with a
+# copied metadata fragment instead of echoing the candidate's actual id).
+def build_output_json_schema(record_id: str | None) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "id": {"enum": [record_id]} if record_id is not None else {"type": "string", "minLength": 1},
+            "syllabusRelevant": {"type": "boolean"},
+            "indianTopic": {"type": "string", "minLength": 1},
+            "recommendation": {"enum": sorted(RECOMMENDATIONS)},
+            "jurisdictionRisk": {"enum": sorted(JURISDICTION_RISKS)},
+            "figureRightsWarning": {"enum": sorted(FIGURE_WARNINGS)},
+            "rationale": {"type": "string", "minLength": 1},
+        },
+        "required": list(OUTPUT_KEYS),
+        "additionalProperties": False,
+    }
+
+
+# Used only where no specific record id is known yet (the startup probe in
+# BitNetRuntime.__init__). Real per-record calls build their own schema.
+OUTPUT_JSON_SCHEMA = build_output_json_schema(None)
+OUTPUT_JSON_SCHEMA_TEXT = json.dumps(OUTPUT_JSON_SCHEMA)
+
+# llama.cpp's CLI tools (tools/completion/completion.cpp, tools/cli/cli.cpp,
+# observed 2026-10-13 on the commit 390c307 checkout) print this literal
+# line after the generated text on a normal end-of-generation stop, via the
+# unleveled LOG() macro that --log-disable cannot silence without also
+# silencing the generated content. It is harness decoration, never part of
+# the model's own output.
+EOG_MARKER_SUFFIX = " [end of text]"
+
+
+def strip_eog_marker(text: str) -> str:
+    stripped = text.rstrip()
+    if stripped.endswith(EOG_MARKER_SUFFIX):
+        return stripped[: -len(EOG_MARKER_SUFFIX)]
+    return text
 
 
 @dataclass(frozen=True)
@@ -58,6 +152,9 @@ class Verification:
     model_label: str
     cwd: str
     limitations: tuple[str, ...]
+    no_cnv_flag: str | None = None
+    no_display_prompt_flag: str | None = None
+    json_schema_flag: str | None = None
 
 
 def _flag_advertised(help_text: str, flag: str) -> bool:
@@ -193,6 +290,9 @@ def verify_bitnet(
         )
     status, help_text = _read_help(prefix, workdir)
     flags = {role: _choose(help_text, aliases) for role, aliases in FLAG_CANDIDATES.items()}
+    no_cnv_flag = _choose(help_text, NO_CONVERSATION_CANDIDATES)
+    no_display_prompt_flag = _choose(help_text, NO_DISPLAY_PROMPT_CANDIDATES)
+    json_schema_flag = _choose(help_text, JSON_SCHEMA_CANDIDATES)
     missing = [role for role in REQUIRED_ROLES if not flags.get(role)]
     if status != 0 or missing or not help_text.strip():
         detail = ", ".join(missing) if missing else "help text was empty or the help command failed"
@@ -251,6 +351,24 @@ def verify_bitnet(
         limitations.append(
             "run_inference.py inherits llama-cli stdout; noisy output fails closed"
         )
+    if no_cnv_flag:
+        limitations.append(
+            f"{no_cnv_flag} is advertised and is always passed, even though it was not "
+            "requested; this forces single-shot output and avoids a chat-template crash "
+            "on runtimes that auto-enable conversation mode for instruct models"
+        )
+    if no_display_prompt_flag:
+        limitations.append(
+            f"{no_display_prompt_flag} is advertised and is always passed; some runtimes "
+            "echo the input prompt onto stdout by default, which is never valid JSON "
+            "on its own"
+        )
+    if json_schema_flag:
+        limitations.append(
+            f"{json_schema_flag} is advertised and is always passed with this project's "
+            "output contract as a grammar; unconstrained decoding was not reliable enough "
+            "to produce JSON on the one model tried so far"
+        )
     return Verification(
         True,
         "flag interface verified against installed help",
@@ -262,10 +380,15 @@ def verify_bitnet(
         label,
         workdir or "",
         tuple(limitations),
+        no_cnv_flag,
+        no_display_prompt_flag,
+        json_schema_flag,
     )
 
 
-def build_argv(verification: Verification, prompt: str, settings: Any) -> tuple[list[str], RuntimeInfo]:
+def build_argv(
+    verification: Verification, prompt: str, settings: Any, *, record_id: str | None = None
+) -> tuple[list[str], RuntimeInfo]:
     if not verification.supported:
         raise BitNetUnavailable(verification.reason)
     argv = list(verification.argv_prefix)
@@ -312,6 +435,20 @@ def build_argv(verification: Verification, prompt: str, settings: Any) -> tuple[
     if gpu_flag:
         gpu_value = 0 if requested is None else requested
         add("gpu_layers", str(gpu_value))
+    if verification.no_cnv_flag:
+        argv.append(verification.no_cnv_flag)
+        passed.append(verification.no_cnv_flag)
+    if verification.no_display_prompt_flag:
+        argv.append(verification.no_display_prompt_flag)
+        passed.append(verification.no_display_prompt_flag)
+    if verification.json_schema_flag:
+        schema_text = (
+            OUTPUT_JSON_SCHEMA_TEXT
+            if record_id is None
+            else json.dumps(build_output_json_schema(record_id))
+        )
+        argv.extend([verification.json_schema_flag, schema_text])
+        passed.append(verification.json_schema_flag)
     for forbidden in NEVER_PASS:
         if forbidden in argv:
             raise BitNetUnavailable(f"refusing to pass {forbidden}")
@@ -342,8 +479,7 @@ class BitNetRuntime:
         return self._info
 
     def complete(self, *, candidate: dict[str, Any], prompt: str, settings: Any) -> str:
-        del candidate
-        argv, info = build_argv(self.verification, prompt, settings)
+        argv, info = build_argv(self.verification, prompt, settings, record_id=candidate["id"])
         self._info = info
         stdout = run_process(
             argv,
@@ -353,6 +489,7 @@ class BitNetRuntime:
             cwd=self.verification.cwd or None,
         )
         try:
-            return stdout.decode("utf-8")
+            text = stdout.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise ProtocolError("model output is not valid UTF-8") from exc
+        return strip_eog_marker(text)
