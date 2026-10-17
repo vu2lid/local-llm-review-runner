@@ -190,6 +190,15 @@ def validate_model_record(record: Any, expected_id: str) -> dict[str, Any]:
         raise ProtocolError(
             f"model output for {expected_id}: rationale must be a non-empty string"
         )
+    # Stage 8E3 Part C: a high jurisdictionRisk and a keep recommendation
+    # are mutually exclusive. The deterministic guard (jurisdiction_guard.py)
+    # already keeps this combination from reaching here through the normal
+    # runtime path, but this is the strict output validator; it must fail
+    # closed on its own if some other caller ever hands it this pair.
+    if record["jurisdictionRisk"] == "high" and record["recommendation"] == "keep":
+        raise ProtocolError(
+            f"model output for {expected_id}: recommendation cannot be keep when jurisdictionRisk is high"
+        )
     return {key: record[key] for key in OUTPUT_KEYS}
 
 

@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from local_llm_review.errors import ProtocolError, ReviewError
+from local_llm_review.jurisdiction_guard import build_guard_record, evaluate_guard
 from local_llm_review.metadata import (
     RunSettings,
     RuntimeInfo,
@@ -49,10 +50,28 @@ def execute(
         lines: list[str] = []
         ids: list[str] = []
         for index, candidate in enumerate(candidates, start=1):
-            log(f"record {index} ({candidate['id']}): invoking {runtime.name}")
-            prompt = render_prompt(candidate)
-            completion = runtime.complete(candidate=candidate, prompt=prompt, settings=settings)
-            record = parse_model_output(completion, expected_id=candidate["id"])
+            # The deterministic jurisdiction guard runs first and, when it
+            # matches, the runtime is never invoked for this record: there
+            # is no model result to defer to or be overridden by, by
+            # construction. See jurisdiction_guard.py for why (observed
+            # 2026-10-14: a model can name a US-only institution correctly
+            # in its own rationale and still recommend "keep" for it). The
+            # fixture runtime is exempt: it is a documented development
+            # double with its own fixed, byte-identical output (invariant
+            # #6), never a claim about real model behavior, so there is no
+            # real jurisdictional judgment here for the guard to backstop.
+            guard = evaluate_guard(candidate) if runtime_name != "fixture" else None
+            if guard is not None and guard.flagged:
+                log(
+                    f"record {index} ({candidate['id']}): deterministic guard matched "
+                    f"{guard.rule} ({guard.category}); {runtime.name} was not invoked"
+                )
+                record = build_guard_record(candidate, guard)
+            else:
+                log(f"record {index} ({candidate['id']}): invoking {runtime.name}")
+                prompt = render_prompt(candidate)
+                completion = runtime.complete(candidate=candidate, prompt=prompt, settings=settings)
+                record = parse_model_output(completion, expected_id=candidate["id"])
             lines.append(dump_model_record(record))
             ids.append(record["id"])
         if ids != [candidate["id"] for candidate in candidates] or len(lines) != input_count:

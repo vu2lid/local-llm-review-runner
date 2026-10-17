@@ -23,7 +23,7 @@ class PromptHashTest(unittest.TestCase):
     def test_template_instructions_and_single_placeholder(self):
         text = template_bytes().decode("utf-8")
         self.assertEqual(text.count(PLACEHOLDER), 1)
-        self.assertEqual(PROMPT_VERSION, "india-review-prompt-v2")
+        self.assertEqual(PROMPT_VERSION, "india-review-prompt-v3")
         for phrase in (
             "India ASOC",
             "jurisdictionRisk",
@@ -41,12 +41,12 @@ class PromptHashTest(unittest.TestCase):
     def test_vendored_bytes_match_us_hamexam_when_that_checkout_exists(self):
         override = os.environ.get("US_HAMEXAM_ROOT")
         if override:
-            sibling = Path(override) / "tools" / "india-review" / "prompt-v2.txt"
+            sibling = Path(override) / "tools" / "india-review" / "prompt-v3.txt"
         else:
-            sibling = support.ROOT.parent / "us-hamexam" / "tools" / "india-review" / "prompt-v2.txt"
+            sibling = support.ROOT.parent / "us-hamexam" / "tools" / "india-review" / "prompt-v3.txt"
         if not sibling.is_file():
             self.skipTest(
-                "us-hamexam prompt-v2.txt is not present. The vendored template is still hashed on its own. "
+                "us-hamexam prompt-v3.txt is not present. The vendored template is still hashed on its own. "
                 "Set US_HAMEXAM_ROOT to compare bytes."
             )
         self.assertEqual(PROMPT_PATH.read_bytes(), sibling.read_bytes())

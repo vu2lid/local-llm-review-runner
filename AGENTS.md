@@ -16,8 +16,9 @@ src/local_llm_review/
   cli.py                             # doctor, run, setup
   protocol.py                        # input and output validation, JSONL parse
   prompt.py                          # template load, sha256, render
-  prompts/india-review-prompt-v2.txt  # byte copy of us-hamexam prompt-v2.txt
+  prompts/india-review-prompt-v3.txt  # byte copy of us-hamexam prompt-v3.txt
   runner.py                          # parse first, then runtime; fail closed
+  jurisdiction_guard.py              # deterministic pre-runtime US-jurisdiction guard
   metadata.py                        # separate metadata JSON file
   process.py                         # argv subprocess, no shell, timeout kill
   doctor.py                          # support claimed only after verification
@@ -40,7 +41,7 @@ fixtures/pilot-25.jsonl              # synthetic records only
 7. **Do not claim BitNet support** unless `doctor` has verified the installed executable's own help, the model file, and, for `run_inference.py`, a non-empty `build/bin/llama-cli` in the child working directory (`--cwd`, or the script directory when `--cwd` is omitted). Do not invent CLI flags. Do not pass `-cnv` or `--conversation`. Pass `--seed` only when help advertises it. Record `seedApplied: false` otherwise.
 8. **Nothing heavy in git.** No model weights, GGUF or other weight files, runtime binaries, credentials, or real or generated candidate exam banks. The committed pilot fixture stays synthetic, with `figure: false`. Reject `figure: true` before a runtime starts. The India manifest requires `figure: false`.
 9. **Prompt hash is the sha256 of the template file bytes.** The file is LF-only and contains `__CANDIDATE_JSON__` exactly once. If a candidate contains that placeholder, refuse substitution. A prompt edit changes the hash and must keep the version string honest.
-10. **Advisory only.** Prompt text and fixture rationales must not claim official ASOC status or approve publication.
+10. **Advisory only.** Prompt text and fixture rationales must not claim official ASOC status or approve publication. Model output is advisory and never overrides the deterministic jurisdiction guard: when the guard flags a candidate, the runtime is not invoked for that record (fixture exempt) and the guard's own `reject`/`high` record is emitted; `validate_model_record` also fails closed on any `jurisdictionRisk: "high"` + `recommendation: "keep"` pair. The guard rules mirror us-hamexam `scripts/jurisdiction-guard.js`; keep both in sync by hand.
 
 Exit codes: `0` success, `1` protocol or runtime failure (`ProtocolError`, `RuntimeFailed`, `RuntimeTimeout`), `2` usage or unverified BitNet (`UsageError`, `BitNetUnavailable`).
 
@@ -60,7 +61,7 @@ Optional: if `../us-hamexam/scripts/review-pipeline.js` or `US_HAMEXAM_ROOT` is 
 
 ## Changing the prompt
 
-`src/local_llm_review/prompts/india-review-prompt-v2.txt` must stay a byte-for-byte copy of us-hamexam `tools/india-review/prompt-v2.txt`. `PROMPT_VERSION` is `india-review-prompt-v2`. The sha256 of that file is the shared `promptHash`.
+`src/local_llm_review/prompts/india-review-prompt-v3.txt` must stay a byte-for-byte copy of us-hamexam `tools/india-review/prompt-v3.txt`. `PROMPT_VERSION` is `india-review-prompt-v3`. The sha256 of that file is the shared `promptHash`.
 
 Do not reword the template only in this repository. When both trees change together:
 

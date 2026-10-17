@@ -57,9 +57,15 @@ class OutputValidationTest(unittest.TestCase):
         self.assertIs(parse_model_output(json.dumps(good(syllabusRelevant=False)), expected_id="T2A01")["syllabusRelevant"], False)
 
     def test_jurisdiction_and_figure_enums(self):
-        for risk in ("none", "low", "medium", "high"):
+        for risk in ("none", "low", "medium"):
             parsed = parse_model_output(json.dumps(good(jurisdictionRisk=risk)), expected_id="T2A01")
             self.assertEqual(parsed["jurisdictionRisk"], risk)
+        # "high" is a valid jurisdictionRisk value, but Stage 8E3 Part C
+        # forbids pairing it with recommendation="keep" (see
+        # test_high_jurisdiction_risk_cannot_be_kept below), so exercise the
+        # enum value itself with a recommendation that is always compatible.
+        parsed = parse_model_output(json.dumps(good(jurisdictionRisk="high", recommendation="defer")), expected_id="T2A01")
+        self.assertEqual(parsed["jurisdictionRisk"], "high")
         for warning in ("none", "warning"):
             parsed = parse_model_output(json.dumps(good(figureRightsWarning=warning)), expected_id="T2A01")
             self.assertEqual(parsed["figureRightsWarning"], warning)
@@ -67,6 +73,20 @@ class OutputValidationTest(unittest.TestCase):
             parse_model_output(json.dumps(good(jurisdictionRisk="extreme")), expected_id="T2A01")
         with self.assertRaisesRegex(ProtocolError, "figureRightsWarning"):
             parse_model_output(json.dumps(good(figureRightsWarning="cleared")), expected_id="T2A01")
+
+    def test_high_jurisdiction_risk_cannot_be_kept(self):
+        # Stage 8E3 Part C: a high-risk candidate cannot receive "keep",
+        # regardless of which path produced the record (deterministic guard
+        # or a model). Every other recommendation stays legal with "high".
+        with self.assertRaisesRegex(ProtocolError, "cannot be keep"):
+            parse_model_output(json.dumps(good(jurisdictionRisk="high", recommendation="keep")), expected_id="T2A01")
+        for recommendation in ("adapt", "reject", "defer"):
+            parsed = parse_model_output(json.dumps(good(jurisdictionRisk="high", recommendation=recommendation)), expected_id="T2A01")
+            self.assertEqual(parsed["recommendation"], recommendation)
+        # "keep" is still legal at every OTHER risk level.
+        for risk in ("none", "low", "medium"):
+            parsed = parse_model_output(json.dumps(good(jurisdictionRisk=risk, recommendation="keep")), expected_id="T2A01")
+            self.assertEqual(parsed["recommendation"], "keep")
 
     def test_blank_rationale_and_topic_are_rejected(self):
         with self.assertRaisesRegex(ProtocolError, "rationale"):

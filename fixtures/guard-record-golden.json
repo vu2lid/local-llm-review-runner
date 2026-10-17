@@ -1,0 +1,35 @@
+{
+  "conventionVersion": 1,
+  "candidate": {
+    "id": "GUARD01",
+    "poolKey": "technician",
+    "sub": "T2",
+    "question": "What does FCC Part 97 say about station identification?",
+    "choices": {
+      "A": "It requires the station call sign in English.",
+      "B": "b",
+      "C": "c",
+      "D": "d"
+    },
+    "correct": "A",
+    "correctText": "It requires the station call sign in English.",
+    "ref": "",
+    "figure": false,
+    "source": {
+      "editionId": "e",
+      "revisionId": "r",
+      "element": 2,
+      "displayName": "d"
+    }
+  },
+  "expectedRecord": {
+    "id": "GUARD01",
+    "syllabusRelevant": false,
+    "indianTopic": "Jurisdiction-specific (US) — not syllabus relevant",
+    "recommendation": "reject",
+    "jurisdictionRisk": "high",
+    "figureRightsWarning": "none",
+    "rationale": "Deterministic pre-invocation guard (fcc-part-97): names FCC Part 97, the US amateur-radio regulations — no model involved; the adapter never saw this candidate"
+  },
+  "notes": "Both implementations must reproduce expectedRecord exactly; bump conventionVersion and this file together if the guard-record shape changes."
+}

@@ -92,6 +92,8 @@ With all of that, `run --runtime bitnet` now completes end-to-end against BitNet
 
 **Verdict:** the BitNet runtime path in this runner is real infrastructure (reproducible build, correct plumbing, passes the strict JSONL contract end-to-end) but BitNet-b1.58-2B-4T itself is not yet a usable backend for this review task: runtime works, structured-output capability unconfirmed. Do not use its output for candidate decisions. The gap looks specific to this model/1-bit quantization rather than to "small local models can't do this" — a conventional small instruct model at the same resource tier clears the content-quality bar. Anyone adapting this runner for their own local backend should expect to pick the model, not just the runtime, with that in mind.
 
+**Update (observed 2026-10-14, Stage 8E3):** the optimistic Qwen comparison above was recorded against prompt v2 on hand-picked records. The follow-up pilot of `india-review-prompt-v3` on 19 universal questions with Qwen2.5-1.5B found 7 with fabricated or self-contradictory rationales and 2 truncation failures, and the model recommended `keep` with low/none `jurisdictionRisk` for known US-specific questions it correctly named in its own rationale. v3 is retained as EXPERIMENTAL, not an improvement; the deterministic jurisdiction guard now catches those US-specific cases before any runtime is invoked (6/6 on the known set), and Qwen output is treated as usable only with the guard plus human review. See the README "Evaluation status" section.
+
 This runner can perform that download itself, and only when both flags are present:
 
 ```sh

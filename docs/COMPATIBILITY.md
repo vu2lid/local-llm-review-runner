@@ -88,11 +88,13 @@ Replace `--runtime fixture` with the BitNet invocation from [SETUP.md](SETUP.md)
 
 ## Prompt hash
 
-This runner's template is `india-review-prompt-v2` (`src/local_llm_review/prompts/india-review-prompt-v2.txt`). The file is a byte copy of us-hamexam `tools/india-review/prompt-v2.txt`. `promptHash` in the metadata file is the sha256 of those bytes, so it matches the `promptHash` us-hamexam stores on a manifest or pilot report from that same template.
+This runner's template is `india-review-prompt-v3` (`src/local_llm_review/prompts/india-review-prompt-v3.txt`). The file is a byte copy of us-hamexam `tools/india-review/prompt-v3.txt`. `promptHash` in the metadata file is the sha256 of those bytes, so it matches the `promptHash` us-hamexam stores on a manifest or pilot report from that same template.
 
-Current digest: `500e76ef71287fec9366be5bea9786cd57c4fdf52805ad110cdcf57d4668da8b`.
+Current digest: `278f86d7a8746fa86d49161ebff3844ae941f0162e68189a33518d078b599815`.
 
 Do not reword the template in this repository alone. A prompt change has to land in both files and keep a single version string.
+
+v3 is retained as EXPERIMENTAL, not claimed as an improvement: the 2026-10-14 Qwen2.5-1.5B pilot produced fabricated or self-contradictory rationales on 7 of 19 universal questions and 2 truncation failures. Separately, the deterministic jurisdiction guard in this runner fires before any runtime invocation for non-fixture runtimes and its `reject`/`high` record is emitted without consulting the model, so model output stays advisory and can never override a guard rejection; the runner's strict validator also rejects any model record pairing `jurisdictionRisk: "high"` with `recommendation: "keep"`.
 
 ## Metadata
 
@@ -104,7 +106,7 @@ Written only to `--metadata`, never to stdout:
   "runtime": "fixture",
   "modelId": "fixture",
   "modelPathLabel": "fixture",
-  "promptVersion": "india-review-prompt-v2",
+  "promptVersion": "india-review-prompt-v3",
   "promptHash": "<sha256 of the template file>",
   "settings": {},
   "inputCount": 25,

@@ -14,6 +14,14 @@ Classifications are advisory. The runner does not claim official ASOC status, sy
 
 `doctor` does not claim BitNet support until it has verified the installed executable and model. With no BitNet paths it reports `support claimed: no` and `fixture: ready`.
 
+## Evaluation status (Stage 8E3)
+
+- The active template is `india-review-prompt-v3`, byte-identical to us-hamexam `tools/india-review/prompt-v3.txt`. A 2026-10-14 Qwen2.5-1.5B pilot found v3 is **not** an improvement: 7 of 19 universal questions got fabricated or self-contradictory rationales, and 2 records hit truncation failures. v3 is retained as **EXPERIMENTAL**; do not cite it as a quality improvement over v2.
+- A deterministic jurisdiction guard (`src/local_llm_review/jurisdiction_guard.py`) runs on the candidate's own text **before** any runtime (fixture excepted) is invoked. On a match the runtime is never called for that record and the guard's own `reject`/`high` record is emitted, so model output is advisory and can never override or un-guard a deterministic rejection; `validate_model_record` additionally fails closed on any `high` + `keep` pair. In the same pilot the guard caught all 6 known US-specific questions.
+- BitNet b1.58 2B 4T is plumbing-valid but unsuitable for content triage (see [docs/SETUP.md](docs/SETUP.md)). Qwen2.5-1.5B output is usable only together with the deterministic guard and human review of every recommendation.
+
+The synthetic guard record's shape is a cross-repository convention shared with us-hamexam's `guardRecord()`, and it is pinned by the checked-in golden fixture `fixtures/guard-record-golden.json` (a byte-identical copy lives at us-hamexam `tools/india-review/guard-record-golden.json`). `tests/test_guard_golden.py` always runs — it never skips on a missing sibling checkout — so CI detects guard-record drift independently; when the sibling checkout is present the same test additionally asserts the two golden files are byte-identical. Changing the guard-record shape requires updating the golden fixture in both repositories together and bumping its `conventionVersion`.
+
 ## Requirements
 
 - Python 3.10 or newer for the fixture and the test suite. No third-party packages and no `pip install` are required.
@@ -68,7 +76,7 @@ Each output record has exactly these keys:
 {"id":"T2A01","syllabusRelevant":true,"indianTopic":"basic electronics","recommendation":"keep","jurisdictionRisk":"none","figureRightsWarning":"none","rationale":"..."}
 ```
 
-`recommendation` is `keep`, `adapt`, `reject`, or `defer`. `jurisdictionRisk` is `none`, `low`, `medium`, or `high`. `figureRightsWarning` is `none` or `warning`. `syllabusRelevant` is a boolean. `indianTopic` and `rationale` are non-empty strings. The prompt version is `india-review-prompt-v2`, the same template and sha256 as us-hamexam `tools/india-review/prompt-v2.txt`. That digest is `promptHash` in the metadata file.
+`recommendation` is `keep`, `adapt`, `reject`, or `defer`. `jurisdictionRisk` is `none`, `low`, `medium`, or `high`. `figureRightsWarning` is `none` or `warning`. `syllabusRelevant` is a boolean. `indianTopic` and `rationale` are non-empty strings. The prompt version is `india-review-prompt-v3`, the same template and sha256 as us-hamexam `tools/india-review/prompt-v3.txt`. That digest is `promptHash` in the metadata file.
 
 ## Calling it from us-hamexam
 

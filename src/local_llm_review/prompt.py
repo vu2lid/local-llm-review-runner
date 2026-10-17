@@ -9,9 +9,9 @@ from typing import Any
 
 from local_llm_review.errors import ProtocolError
 
-PROMPT_VERSION = "india-review-prompt-v2"
+PROMPT_VERSION = "india-review-prompt-v3"
 PLACEHOLDER = "__CANDIDATE_JSON__"
-PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "india-review-prompt-v2.txt"
+PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "india-review-prompt-v3.txt"
 
 
 def template_bytes() -> bytes:
