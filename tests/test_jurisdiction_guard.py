@@ -106,6 +106,8 @@ class GuardRecordShapeTest(unittest.TestCase):
         self.assertIn("races-civil-defense", record["rationale"])
         self.assertIn(guard.reason, record["rationale"])
         self.assertIn("no model involved", record["rationale"])
+        # Stage 8F2 contract v3: guard-forced records carry an empty list.
+        self.assertEqual(record["syllabusCodes"], [])
 
 
 US_HAMEXAM_REVIEW_PIPELINE = (
@@ -163,7 +165,7 @@ class CrossImplementationGuardRecordTest(unittest.TestCase):
                 "us-hamexam scripts/review-pipeline.js or node is not available. "
                 "Set US_HAMEXAM_ROOT to compare against the sibling checkout."
             )
-        for key in ("id", "syllabusRelevant", "indianTopic", "recommendation", "jurisdictionRisk", "figureRightsWarning"):
+        for key in ("id", "syllabusRelevant", "indianTopic", "recommendation", "jurisdictionRisk", "figureRightsWarning", "syllabusCodes"):
             self.assertEqual(py_record[key], js_record[key], key)
         # Both rationale templates intentionally embed the same matched
         # rule id and reason (the two RULES tables are hand-mirrored), so
@@ -191,9 +193,10 @@ def write_always_keep_command(directory: Path) -> Path:
         "matches = list(re.finditer(r'\"id\":\\s*\"([^\"]+)\"', blob))\n"
         "ident = matches[-1].group(1) if matches else 'UNKNOWN'\n"
         "json.dump({\n"
-        "    'id': ident, 'syllabusRelevant': True, 'indianTopic': 'electronics',\n"
+        "    'id': ident, 'syllabusRelevant': False, 'indianTopic': 'electronics',\n"
         "    'recommendation': 'keep', 'jurisdictionRisk': 'none',\n"
         "    'figureRightsWarning': 'none', 'rationale': 'the model insists this is fine',\n"
+        "    'syllabusCodes': [],\n"
         "}, sys.stdout)\n"
     )
     script.chmod(script.stat().st_mode | stat.S_IEXEC)

@@ -18,7 +18,7 @@ class DoctorTest(unittest.TestCase):
         self.assertIn("bitnet: not configured", text)
         self.assertIn("support claimed: no", text)
         self.assertNotIn("support claimed: yes", text)
-        self.assertIn("promptVersion: india-review-prompt-v3", text)
+        self.assertIn("promptVersion: india-review-prompt-v4", text)
         bare = support.run_bin(["doctor", "--runtime", "bitnet"])
         self.assertEqual(bare.returncode, 2)
         bare_text = bare.stdout.decode()

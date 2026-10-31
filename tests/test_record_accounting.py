@@ -48,10 +48,11 @@ class RecordAccountingTest(unittest.TestCase):
                 "if n > 1:\n"
                 "    sys.stderr.write('second record failed\\n')\n"
                 "    raise SystemExit(3)\n"
-                "json.dump({'id': cand['id'], 'syllabusRelevant': True,\n"
+                "json.dump({'id': cand['id'], 'syllabusRelevant': False,\n"
                 " 'indianTopic': 'electrical principles', 'recommendation': 'keep',\n"
                 " 'jurisdictionRisk': 'none', 'figureRightsWarning': 'none',\n"
-                " 'rationale': 'Advisory only: stub; this is not publication approval.'}, sys.stdout)\n"
+                " 'rationale': 'Advisory only: stub; this is not publication approval.',\n"
+                " 'syllabusCodes': []}, sys.stdout)\n"
                 "sys.stdout.write('\\n')\n"
             )
             meta = directory / "meta.json"
@@ -75,10 +76,11 @@ class RecordAccountingTest(unittest.TestCase):
                 "import json, sys\n"
                 "text = sys.stdin.read().splitlines()\n"
                 "cand = json.loads([ln for ln in text if ln.strip()][-1])\n"
-                "row = {'id': cand['id'], 'syllabusRelevant': True,\n"
+                "row = {'id': cand['id'], 'syllabusRelevant': False,\n"
                 " 'indianTopic': 'electrical principles', 'recommendation': 'keep',\n"
                 " 'jurisdictionRisk': 'none', 'figureRightsWarning': 'none',\n"
-                " 'rationale': 'Advisory only: stub; this is not publication approval.'}\n"
+                " 'rationale': 'Advisory only: stub; this is not publication approval.',\n"
+                " 'syllabusCodes': []}\n"
                 "sys.stdout.write(json.dumps(row) + '\\n' + json.dumps(row) + '\\n')\n"
             )
             result = support.run_cli(
@@ -102,10 +104,11 @@ class RecordAccountingTest(unittest.TestCase):
                 "    sys.stderr.write('prompt leaked into argv\\n')\n"
                 "    raise SystemExit(7)\n"
                 "cand = json.loads([ln for ln in prompt.splitlines() if ln.startswith('{')][-1])\n"
-                "json.dump({'id': cand['id'], 'syllabusRelevant': True,\n"
+                "json.dump({'id': cand['id'], 'syllabusRelevant': False,\n"
                 " 'indianTopic': 'electrical principles', 'recommendation': 'keep',\n"
                 " 'jurisdictionRisk': 'none', 'figureRightsWarning': 'none',\n"
-                " 'rationale': 'Advisory only: stub; this is not publication approval.'}, sys.stdout)\n"
+                " 'rationale': 'Advisory only: stub; this is not publication approval.',\n"
+                " 'syllabusCodes': []}, sys.stdout)\n"
             )
             result = support.run_cli(
                 ["run", "--runtime", "command", "--command", str(script), "--command-arg", "--literal", "--timeout", "10"],

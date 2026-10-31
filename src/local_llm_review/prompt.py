@@ -9,9 +9,9 @@ from typing import Any
 
 from local_llm_review.errors import ProtocolError
 
-PROMPT_VERSION = "india-review-prompt-v3"
+PROMPT_VERSION = "india-review-prompt-v4"
 PLACEHOLDER = "__CANDIDATE_JSON__"
-PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "india-review-prompt-v3.txt"
+PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "india-review-prompt-v4.txt"
 
 
 def template_bytes() -> bytes:
@@ -31,9 +31,12 @@ def prompt_hash() -> str:
 
 def render_prompt(candidate: dict[str, Any]) -> str:
     raw = template_text()
-    if raw.count(PLACEHOLDER) != 1:
+    # prompt-v4 mentions the placeholder once in a header coupling note in
+    # addition to the real substitution site, so every occurrence is
+    # replaced (the note is inert text either way).
+    if raw.count(PLACEHOLDER) < 1:
         raise ProtocolError(
-            f"prompt template must contain {PLACEHOLDER} exactly once"
+            f"prompt template must contain {PLACEHOLDER} at least once"
         )
     payload = json.dumps(
         candidate, ensure_ascii=False, sort_keys=True, separators=(",", ":")

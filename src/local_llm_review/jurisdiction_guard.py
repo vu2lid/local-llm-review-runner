@@ -144,4 +144,7 @@ def build_guard_record(candidate: dict[str, Any], guard: GuardResult) -> dict[st
             f"Deterministic pre-invocation guard ({guard.rule}): {guard.reason} "
             "— no model involved; the adapter never saw this candidate"
         ),
+        # Stage 8F2 contract v3: guard-forced records carry an empty list
+        # because a guard-forced candidate needs no syllabus mapping.
+        "syllabusCodes": [],
     }

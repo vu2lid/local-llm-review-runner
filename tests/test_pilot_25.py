@@ -10,6 +10,7 @@ import support
 from local_llm_review.metadata import METADATA_KEYS
 from local_llm_review.prompt import PROMPT_VERSION, prompt_hash
 from local_llm_review.protocol import parse_model_output
+from local_llm_review.runtimes.fixture import EXAMPLE_CODES
 
 EXPECTED = {
     "SYN01": "keep",
@@ -52,7 +53,7 @@ class PilotFixtureTest(unittest.TestCase):
         self.assertEqual(len(lines), 25)
         ids = []
         for line, candidate in zip(lines, candidates):
-            record = parse_model_output(line, expected_id=candidate["id"])
+            record = parse_model_output(line, expected_id=candidate["id"], allowed_codes=EXAMPLE_CODES)
             ids.append(record["id"])
             self.assertEqual(record["recommendation"], EXPECTED[candidate["id"]])
             self.assertIn("not publication approval", record["rationale"])

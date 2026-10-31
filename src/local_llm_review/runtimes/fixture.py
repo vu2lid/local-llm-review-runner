@@ -22,6 +22,18 @@ _GROUPS = {
 }
 TOPICS = {f"{band}{number}": label for band in "TGE" for number, label in _GROUPS.items()}
 
+# Stage 8F2: the fixture's synthetic records carry syllabusCodes from this
+# tiny built-in example set (a subset of the real us-hamexam
+# editions/india/syllabus.json code set, so sibling-manifest compatibility
+# tests accept them). The rule is deterministic and never echoes candidate
+# text: a record that classifies as not syllabus-relevant gets [], a
+# relevant record gets the single fixed code below. The set doubles as the
+# allowed-code set for fixture runs that pass no --syllabus-manifest: the
+# fixture is a documented development double (like its guard exemption and
+# byte-identical output), not a model making real syllabus judgments.
+EXAMPLE_CODES = frozenset({"A.SEMICONDUCTORS"})
+FIXED_EXAMPLE_CODE = "A.SEMICONDUCTORS"
+
 # Jurisdiction phrases are matched against question, choices, and ref only.
 # poolKey and source are ignored so a pool name cannot trip the classifier.
 _HIGH = (
@@ -115,6 +127,7 @@ def classify(candidate: dict[str, Any]) -> dict[str, Any]:
         "jurisdictionRisk": risk,
         "figureRightsWarning": warning,
         "rationale": rationale,
+        "syllabusCodes": [FIXED_EXAMPLE_CODE] if relevant else [],
     }
 
 
@@ -128,4 +141,4 @@ class FixtureRuntime:
 
     def complete(self, *, candidate: dict[str, Any], prompt: str, settings: Any) -> str:
         del prompt, settings
-        return dump_model_record(classify(candidate))
+        return dump_model_record(classify(candidate), EXAMPLE_CODES)

@@ -1,0 +1,45 @@
+{
+  "contract": "model-record",
+  "contractVersion": 3,
+  "description": "Golden pin for the Stage 8F2 model record contract shared with us-hamexam scripts/review-pipeline.js validateModelRecord (review manifest schemaVersion 3). tests/test_model_record_contract.py asserts the runner's OUTPUT_KEYS and validator behavior match every rule recorded here, so CI detects contract drift without the us-hamexam sibling checkout.",
+  "outputKeys": [
+    "figureRightsWarning",
+    "id",
+    "indianTopic",
+    "jurisdictionRisk",
+    "rationale",
+    "recommendation",
+    "syllabusCodes",
+    "syllabusRelevant"
+  ],
+  "rules": {
+    "requiresCodeWhenRelevant": true,
+    "duplicatesForbidden": true,
+    "unknownCodeFailsClosed": true,
+    "codesRequireExplicitManifest": true,
+    "relevantFalseWithCodesIsContradictory": true,
+    "highRiskCannotBeKept": true
+  },
+  "exampleManifest": {
+    "A.EXAMPLE": "Example topic"
+  },
+  "exampleRecord": {
+    "id": "SYN-EXAMPLE-01",
+    "syllabusRelevant": true,
+    "indianTopic": "example topic area",
+    "recommendation": "adapt",
+    "jurisdictionRisk": "low",
+    "figureRightsWarning": "none",
+    "rationale": "Advisory only: synthetic example record for the contract golden; this is not publication approval.",
+    "syllabusCodes": ["A.EXAMPLE"]
+  },
+  "expectedOutcome": "accept",
+  "brokenVariants": [
+    {"name": "unknown code", "change": {"syllabusCodes": ["A.BOGUS"]}, "expectedError": "unknown syllabus code"},
+    {"name": "duplicate code", "change": {"syllabusCodes": ["A.EXAMPLE", "A.EXAMPLE"]}, "expectedError": "duplicate syllabus code"},
+    {"name": "empty codes when relevant", "change": {"syllabusCodes": []}, "expectedError": "syllabusRelevant is true but syllabusCodes is empty"},
+    {"name": "codes when not relevant", "change": {"syllabusRelevant": false}, "expectedError": "contradictory"},
+    {"name": "codes not an array", "change": {"syllabusCodes": "A.EXAMPLE"}, "expectedError": "must be an array"},
+    {"name": "high risk kept", "change": {"jurisdictionRisk": "high", "recommendation": "keep"}, "expectedError": "cannot be keep"}
+  ]
+}

@@ -14,9 +14,9 @@ This repository is standalone. Do not import `us-hamexam`, do not add it as a de
 bin/local-llm-review                 # inserts src/ on sys.path and calls cli.main
 src/local_llm_review/
   cli.py                             # doctor, run, setup
-  protocol.py                        # input and output validation, JSONL parse
+  protocol.py                        # input and output validation, JSONL parse, syllabus-manifest load
   prompt.py                          # template load, sha256, render
-  prompts/india-review-prompt-v3.txt  # byte copy of us-hamexam prompt-v3.txt
+  prompts/india-review-prompt-v4.txt  # byte copy of us-hamexam prompt-v4.txt
   runner.py                          # parse first, then runtime; fail closed
   jurisdiction_guard.py              # deterministic pre-runtime US-jurisdiction guard
   metadata.py                        # separate metadata JSON file
@@ -28,6 +28,8 @@ src/local_llm_review/
   runtimes/command.py                # explicit argv; prompt on stdin
 tests/                               # python3 -m unittest discover -s tests
 fixtures/pilot-25.jsonl              # synthetic records only
+fixtures/guard-record-golden.json    # pins the guard-record shape (conventionVersion 2)
+fixtures/model-record-contract-v3.json  # pins the 8-key model record contract (CI drift detection)
 ```
 
 ## Invariants
@@ -36,11 +38,12 @@ fixtures/pilot-25.jsonl              # synthetic records only
 2. **No network during inference.** `run` and `doctor` must not download, import an HTTP client, or call Hugging Face. The only built-in networked path is `setup --download` together with `--confirm-network`, and that path must refuse a model directory inside this repository. A caller-supplied command runtime may be a program that uses the network; do not add network calls to the runner to support it.
 3. **No shell.** Child processes use an argv list. `shell=True` and `os.system` are not allowed. Candidate text is never interpolated into a command string.
 4. **Fail closed.** Parse the full JSONL batch before starting a runtime. Buffer stdout until every record succeeds and, when `--metadata` is set, until that file is written. On duplicate ids, missing ids, malformed JSON, malformed model output, a missing or extra record, a non-zero runtime exit, or a timeout, write nothing to stdout and exit non-zero.
-5. **One output per input, same order, same ids.** Output objects use exactly the seven keys in `protocol.OUTPUT_KEYS`. No markdown fence stripping. Duplicate JSON keys are rejected.
+5. **One output per input, same order, same ids.** Output objects use exactly the eight keys in `protocol.OUTPUT_KEYS` (model record contract v3, Stage 8F2; the 8th is `syllabusCodes`). No markdown fence stripping. Duplicate JSON keys are rejected.
 6. **Fixture stdout is byte-identical** across repeated runs of the same input. `elapsedMs` in metadata may differ. Do not echo candidate question text into fixture rationales.
 7. **Do not claim BitNet support** unless `doctor` has verified the installed executable's own help, the model file, and, for `run_inference.py`, a non-empty `build/bin/llama-cli` in the child working directory (`--cwd`, or the script directory when `--cwd` is omitted). Do not invent CLI flags. Do not pass `-cnv` or `--conversation`. Pass `--seed` only when help advertises it. Record `seedApplied: false` otherwise.
 8. **Nothing heavy in git.** No model weights, GGUF or other weight files, runtime binaries, credentials, or real or generated candidate exam banks. The committed pilot fixture stays synthetic, with `figure: false`. Reject `figure: true` before a runtime starts. The India manifest requires `figure: false`.
-9. **Prompt hash is the sha256 of the template file bytes.** The file is LF-only and contains `__CANDIDATE_JSON__` exactly once. If a candidate contains that placeholder, refuse substitution. A prompt edit changes the hash and must keep the version string honest.
+9. **Prompt hash is the sha256 of the template file bytes.** The file is LF-only and contains `__CANDIDATE_JSON__` (prompt-v4 names it once in a header note in addition to the real substitution site; every occurrence is substituted). If a candidate contains that placeholder, refuse substitution. A prompt edit changes the hash and must keep the version string honest.
+10. **Syllabus codes fail closed.** Model-suggested `syllabusCodes` are validated only against an explicit manifest from `run --syllabus-manifest <path>` (minimal schema: top-level object, `topics` array, each topic a unique non-empty `code` plus a `title`). Per record: entries must be unique non-empty strings, `syllabusRelevant: true` requires at least one code, a non-empty list with `syllabusRelevant: false` is contradictory, and unknown codes are rejected naming the code and the manifest path. A record carrying codes when no manifest was provided fails the run (empty stdout, non-zero). The one exception is the fixture runtime, a development double whose records draw from its own pinned built-in example code set (`runtimes/fixture.py`); fixture stdout stays byte-identical across repeated runs.
 10. **Advisory only.** Prompt text and fixture rationales must not claim official ASOC status or approve publication. Model output is advisory and never overrides the deterministic jurisdiction guard: when the guard flags a candidate, the runtime is not invoked for that record (fixture exempt) and the guard's own `reject`/`high` record is emitted; `validate_model_record` also fails closed on any `jurisdictionRisk: "high"` + `recommendation: "keep"` pair. The guard rules mirror us-hamexam `scripts/jurisdiction-guard.js`; keep both in sync by hand.
 
 Exit codes: `0` success, `1` protocol or runtime failure (`ProtocolError`, `RuntimeFailed`, `RuntimeTimeout`), `2` usage or unverified BitNet (`UsageError`, `BitNetUnavailable`).
@@ -61,7 +64,7 @@ Optional: if `../us-hamexam/scripts/review-pipeline.js` or `US_HAMEXAM_ROOT` is 
 
 ## Changing the prompt
 
-`src/local_llm_review/prompts/india-review-prompt-v3.txt` must stay a byte-for-byte copy of us-hamexam `tools/india-review/prompt-v3.txt`. `PROMPT_VERSION` is `india-review-prompt-v3`. The sha256 of that file is the shared `promptHash`.
+`src/local_llm_review/prompts/india-review-prompt-v4.txt` must stay a byte-for-byte copy of us-hamexam `tools/india-review/prompt-v4.txt`. `PROMPT_VERSION` is `india-review-prompt-v4`. The sha256 of that file is the shared `promptHash`.
 
 Do not reword the template only in this repository. When both trees change together:
 
@@ -86,7 +89,7 @@ Do not special-case flags copied from an unverified README. The BitNet adapter's
 When you change validation, accounting, or process control, extend the existing tests rather than weakening them:
 
 - input validation, including duplicate keys, missing ids, and line and batch caps
-- output validation, including fences, trailing prose, enums, and id mismatch
+- output validation, including fences, trailing prose, enums, syllabusCodes rules (duplicates, unknown codes, manifest fail-closed, relevant/code contradictions), and id mismatch
 - duplicate, missing, and extra records, with empty stdout
 - timeout and non-zero exit, including process-group kill
 - fixture end-to-end and byte-identical repeated runs

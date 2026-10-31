@@ -113,6 +113,11 @@ def build_output_json_schema(record_id: str | None) -> dict[str, Any]:
             "jurisdictionRisk": {"enum": sorted(JURISDICTION_RISKS)},
             "figureRightsWarning": {"enum": sorted(FIGURE_WARNINGS)},
             "rationale": {"type": "string", "minLength": 1},
+            "syllabusCodes": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "uniqueItems": True,
+            },
         },
         "required": list(OUTPUT_KEYS),
         "additionalProperties": False,

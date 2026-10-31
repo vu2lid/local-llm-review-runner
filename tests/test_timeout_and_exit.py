@@ -73,10 +73,10 @@ class TimeoutAndExitTest(unittest.TestCase):
             wrong = directory / "wrong.py"
             wrong.write_text(
                 "import json, sys\n"
-                "json.dump({'id': 'WRONG', 'syllabusRelevant': True,\n"
+                "json.dump({'id': 'WRONG', 'syllabusRelevant': False,\n"
                 " 'indianTopic': 'x', 'recommendation': 'keep',\n"
                 " 'jurisdictionRisk': 'none', 'figureRightsWarning': 'none',\n"
-                " 'rationale': 'x'}, sys.stdout)\n"
+                " 'rationale': 'x', 'syllabusCodes': []}, sys.stdout)\n"
             )
             result = support.run_cli(
                 ["run", "--runtime", "command", "--command", str(wrong), "--timeout", "10"],

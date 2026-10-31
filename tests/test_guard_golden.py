@@ -32,7 +32,7 @@ class GuardRecordGoldenTest(unittest.TestCase):
         cls.expected = cls.golden["expectedRecord"]
 
     def test_golden_fixture_structure(self):
-        self.assertEqual(self.golden["conventionVersion"], 1)
+        self.assertEqual(self.golden["conventionVersion"], 2)
         self.assertTrue(self.golden["notes"])
         for key in (
             "id",
@@ -42,8 +42,10 @@ class GuardRecordGoldenTest(unittest.TestCase):
             "jurisdictionRisk",
             "figureRightsWarning",
             "rationale",
+            "syllabusCodes",
         ):
             self.assertIn(key, self.expected)
+        self.assertEqual(self.expected["syllabusCodes"], [])
 
     def test_evaluate_guard_flags_the_golden_candidate(self):
         guard = evaluate_guard(self.candidate)

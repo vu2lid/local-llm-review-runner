@@ -32,6 +32,9 @@ def execute(
     model_id: str,
     model_path_label: str,
     metadata_path: str | None,
+    allowed_codes: frozenset[str] | set[str] | None = None,
+    manifest_label: str | None = None,
+    syllabus_manifest: Any = None,
 ) -> str:
     started = time.perf_counter()
     input_count = 0
@@ -71,8 +74,13 @@ def execute(
                 log(f"record {index} ({candidate['id']}): invoking {runtime.name}")
                 prompt = render_prompt(candidate)
                 completion = runtime.complete(candidate=candidate, prompt=prompt, settings=settings)
-                record = parse_model_output(completion, expected_id=candidate["id"])
-            lines.append(dump_model_record(record))
+                record = parse_model_output(
+                    completion,
+                    expected_id=candidate["id"],
+                    allowed_codes=allowed_codes,
+                    manifest_label=manifest_label,
+                )
+            lines.append(dump_model_record(record, allowed_codes))
             ids.append(record["id"])
         if ids != [candidate["id"] for candidate in candidates] or len(lines) != input_count:
             raise ProtocolError(
@@ -100,6 +108,7 @@ def execute(
             output_count=output_count,
             failure_count=failure_count,
             elapsed_ms=elapsed_ms,
+            syllabus_manifest=syllabus_manifest,
         )
         try:
             write_metadata(metadata_path, document)

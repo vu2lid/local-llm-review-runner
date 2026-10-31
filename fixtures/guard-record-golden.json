@@ -1,5 +1,5 @@
 {
-  "conventionVersion": 1,
+  "conventionVersion": 2,
   "candidate": {
     "id": "GUARD01",
     "poolKey": "technician",
@@ -29,7 +29,8 @@
     "recommendation": "reject",
     "jurisdictionRisk": "high",
     "figureRightsWarning": "none",
-    "rationale": "Deterministic pre-invocation guard (fcc-part-97): names FCC Part 97, the US amateur-radio regulations — no model involved; the adapter never saw this candidate"
+    "rationale": "Deterministic pre-invocation guard (fcc-part-97): names FCC Part 97, the US amateur-radio regulations — no model involved; the adapter never saw this candidate",
+    "syllabusCodes": []
   },
-  "notes": "Both implementations must reproduce expectedRecord exactly; bump conventionVersion and this file together if the guard-record shape changes."
+  "notes": "Both implementations must reproduce expectedRecord exactly; bump conventionVersion and this file together if the guard-record shape changes. conventionVersion 2 (Stage 8F2): model contract v3 adds the 8th key syllabusCodes; guard-forced records carry an empty list because a guard-forced candidate needs no syllabus mapping."
 }

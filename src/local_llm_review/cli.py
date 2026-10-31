@@ -11,10 +11,11 @@ from local_llm_review import __version__
 from local_llm_review.doctor import report_doctor
 from local_llm_review.errors import ReviewError, UsageError
 from local_llm_review.metadata import RunSettings
+from local_llm_review.protocol import load_syllabus_manifest
 from local_llm_review.runner import execute, log
 from local_llm_review.runtimes.bitnet import BitNetRuntime, verify_bitnet
 from local_llm_review.runtimes.command import CommandRuntime
-from local_llm_review.runtimes.fixture import FixtureRuntime
+from local_llm_review.runtimes.fixture import EXAMPLE_CODES, FixtureRuntime
 from local_llm_review.setup_cmd import DEFAULT_REPO, run_setup
 
 
@@ -110,6 +111,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--timeout", type=timeout_value, default=600.0)
     run.add_argument("--gpu-layers", type=any_int, default=None)
     run.add_argument("--metadata", help="write the run metadata JSON here, not to stdout")
+    run.add_argument(
+        "--syllabus-manifest",
+        help="syllabus manifest JSON whose topic codes validate model-suggested syllabusCodes",
+    )
     run.add_argument("--command", help="executable for --runtime command")
     run.add_argument("--command-arg", action="append", default=None, help="one argv element, repeatable")
     run.add_argument("--cwd", help="working directory for the runtime")
@@ -209,6 +214,21 @@ def main(argv: list[str] | None = None) -> int:
             raise UsageError(f"unknown command {args.cmd}")
         settings = settings_from(args)
         model_id, label = _identities(args)
+        # Stage 8F2: model-suggested syllabusCodes are validated against an
+        # explicit manifest only. Without one, any record carrying codes
+        # fails closed inside parse_model_output -- except the fixture
+        # runtime, a documented development double whose records draw from
+        # its own pinned built-in example code set (see runtimes/fixture.py).
+        allowed_codes = None
+        manifest_label = None
+        syllabus_manifest = None
+        if args.syllabus_manifest:
+            syllabus_manifest = load_syllabus_manifest(args.syllabus_manifest)
+            allowed_codes = syllabus_manifest.codes
+            manifest_label = syllabus_manifest.path
+        elif args.runtime == "fixture":
+            allowed_codes = EXAMPLE_CODES
+            manifest_label = "fixture built-in example code set"
         raw = sys.stdin.buffer.read()
         try:
             text = raw.decode("utf-8")
@@ -222,6 +242,9 @@ def main(argv: list[str] | None = None) -> int:
             model_id=model_id,
             model_path_label=label,
             metadata_path=args.metadata,
+            allowed_codes=allowed_codes,
+            manifest_label=manifest_label,
+            syllabus_manifest=syllabus_manifest,
         )
         sys.stdout.write(stdout)
         return 0

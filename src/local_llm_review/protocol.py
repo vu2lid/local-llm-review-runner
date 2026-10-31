@@ -1,16 +1,19 @@
 """JSONL candidate and model-output contract.
 
-The model-output key set and enums match the us-hamexam Stage 8E1/8E2
-review manifest (schemaVersion 2). This module does not import that
-repository. See docs/COMPATIBILITY.md.
+The model-output key set and enums match the us-hamexam Stage 8F2
+review manifest (schemaVersion 3, model record contract v3). This module
+does not import that repository. See docs/COMPATIBILITY.md.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from local_llm_review.errors import ProtocolError
+from local_llm_review.errors import ProtocolError, UsageError
 
 CANDIDATE_KEYS = (
     "id",
@@ -34,6 +37,7 @@ OUTPUT_KEYS = (
     "jurisdictionRisk",
     "figureRightsWarning",
     "rationale",
+    "syllabusCodes",
 )
 RECOMMENDATIONS = frozenset({"keep", "adapt", "reject", "defer"})
 JURISDICTION_RISKS = frozenset({"none", "low", "medium", "high"})
@@ -41,6 +45,62 @@ FIGURE_WARNINGS = frozenset({"none", "warning"})
 
 DEFAULT_MAX_RECORDS = 10_000
 DEFAULT_MAX_LINE_BYTES = 1_000_000
+
+
+@dataclass(frozen=True)
+class SyllabusManifest:
+    """Minimal, stdlib-only equivalent of us-hamexam's loadSyllabusManifest.
+
+    Only the fields this runner needs are loaded: the code set used to
+    validate model-suggested syllabusCodes, plus identity fields recorded
+    in the run metadata. Schema sanity is intentionally small: top-level
+    object with a "topics" array whose entries carry a unique non-empty
+    "code" and a "title", mirroring editions/india/syllabus.json.
+    """
+
+    path: str
+    schema_version: Any
+    sha256: str
+    codes: frozenset[str]
+    titles: dict[str, str]
+
+
+def load_syllabus_manifest(path: str | Path) -> SyllabusManifest:
+    target = Path(path)
+    try:
+        raw = target.read_bytes()
+    except OSError as exc:
+        raise UsageError(f"syllabus manifest not readable: {target} ({exc})") from exc
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise UsageError(f"syllabus manifest is malformed JSON: {target} ({exc})") from exc
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("topics"), list):
+        raise UsageError(
+            f"invalid syllabus manifest {target}: top-level object with a topics array required"
+        )
+    codes: set[str] = set()
+    titles: dict[str, str] = {}
+    for index, topic in enumerate(parsed["topics"]):
+        if not isinstance(topic, dict):
+            raise UsageError(f"invalid syllabus manifest {target}: topics[{index}] is not an object")
+        code = topic.get("code")
+        title = topic.get("title")
+        if not _nonempty(code):
+            raise UsageError(f"invalid syllabus manifest {target}: topics[{index}] has no non-empty code")
+        if code in codes:
+            raise UsageError(f"invalid syllabus manifest {target}: duplicate code {code!r}")
+        if not _nonempty(title):
+            raise UsageError(f"invalid syllabus manifest {target}: topics[{index}] has no title")
+        codes.add(code)
+        titles[code] = title
+    return SyllabusManifest(
+        path=str(target),
+        schema_version=parsed.get("schemaVersion"),
+        sha256=hashlib.sha256(raw).hexdigest(),
+        codes=frozenset(codes),
+        titles=titles,
+    )
 
 
 def loads_strict(text: str) -> Any:
@@ -150,7 +210,13 @@ def parse_jsonl(
     return records
 
 
-def validate_model_record(record: Any, expected_id: str) -> dict[str, Any]:
+def validate_model_record(
+    record: Any,
+    expected_id: str,
+    allowed_codes: frozenset[str] | set[str] | None = None,
+    *,
+    manifest_label: str | None = None,
+) -> dict[str, Any]:
     if not isinstance(record, dict):
         raise ProtocolError(f"model output for {expected_id} is not an object")
     got = set(record)
@@ -199,10 +265,60 @@ def validate_model_record(record: Any, expected_id: str) -> dict[str, Any]:
         raise ProtocolError(
             f"model output for {expected_id}: recommendation cannot be keep when jurisdictionRisk is high"
         )
+    # Stage 8F2 model record contract v3: syllabusCodes is an array of
+    # syllabus-manifest codes. Fail closed per record: entries must be
+    # non-empty strings with no duplicates; syllabusRelevant true requires
+    # at least one code; a non-empty list with syllabusRelevant false is a
+    # cross-field contradiction; and codes can only be validated against an
+    # explicit manifest -- a record carrying codes when the run loaded no
+    # manifest is rejected, never silently accepted.
+    codes = record["syllabusCodes"]
+    if not isinstance(codes, list):
+        raise ProtocolError(
+            f"model output for {expected_id}: syllabusCodes must be an array of manifest codes"
+        )
+    seen: set[str] = set()
+    for code in codes:
+        if not _nonempty(code):
+            raise ProtocolError(
+                f"model output for {expected_id}: syllabusCodes entries must be non-empty strings"
+            )
+        if code in seen:
+            raise ProtocolError(
+                f"model output for {expected_id}: duplicate syllabus code {code!r}"
+            )
+        seen.add(code)
+        if allowed_codes is None:
+            raise ProtocolError(
+                f"model output for {expected_id}: syllabus code {code!r} cannot be validated "
+                "because no syllabus manifest was provided to this run (fail closed; "
+                "pass --syllabus-manifest)"
+            )
+        if code not in allowed_codes:
+            raise ProtocolError(
+                f"model output for {expected_id}: unknown syllabus code {code!r} "
+                f"(not in manifest {manifest_label or '<not loaded>'})"
+            )
+    if record["syllabusRelevant"] and not codes:
+        raise ProtocolError(
+            f"model output for {expected_id}: syllabusRelevant is true but syllabusCodes "
+            "is empty (at least one manifest code is required)"
+        )
+    if not record["syllabusRelevant"] and codes:
+        raise ProtocolError(
+            f"model output for {expected_id}: syllabusRelevant is false but syllabusCodes "
+            "is non-empty (contradictory)"
+        )
     return {key: record[key] for key in OUTPUT_KEYS}
 
 
-def parse_model_output(text: str, *, expected_id: str) -> dict[str, Any]:
+def parse_model_output(
+    text: str,
+    *,
+    expected_id: str,
+    allowed_codes: frozenset[str] | set[str] | None = None,
+    manifest_label: str | None = None,
+) -> dict[str, Any]:
     stripped = text.strip()
     if stripped == "":
         raise ProtocolError(f"model output for {expected_id} is empty")
@@ -212,9 +328,14 @@ def parse_model_output(text: str, *, expected_id: str) -> dict[str, Any]:
         raise ProtocolError(
             f"model output for {expected_id} is malformed JSON: {exc}"
         ) from exc
-    return validate_model_record(value, expected_id)
+    return validate_model_record(
+        value, expected_id, allowed_codes, manifest_label=manifest_label
+    )
 
 
-def dump_model_record(record: dict[str, Any]) -> str:
-    canonical = validate_model_record(record, record["id"])
+def dump_model_record(
+    record: dict[str, Any],
+    allowed_codes: frozenset[str] | set[str] | None = None,
+) -> str:
+    canonical = validate_model_record(record, record["id"], allowed_codes)
     return json.dumps(canonical, ensure_ascii=False, separators=(",", ":"))

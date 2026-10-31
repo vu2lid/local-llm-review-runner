@@ -22,18 +22,21 @@ class PromptHashTest(unittest.TestCase):
 
     def test_template_instructions_and_single_placeholder(self):
         text = template_bytes().decode("utf-8")
-        self.assertEqual(text.count(PLACEHOLDER), 1)
-        self.assertEqual(PROMPT_VERSION, "india-review-prompt-v3")
+        # prompt-v4 names the placeholder in a header coupling note as well
+        # as the real substitution site, so >= 1 and every occurrence is
+        # substituted.
+        self.assertGreaterEqual(text.count(PLACEHOLDER), 1)
+        self.assertEqual(PROMPT_VERSION, "india-review-prompt-v4")
         for phrase in (
             "India ASOC",
             "jurisdictionRisk",
             "figureRightsWarning",
             "always false",
-            "EXACTLY ONE JSON object",
             "keep",
             "adapt",
             "reject",
             "defer",
+            "syllabusCodes",
         ):
             self.assertIn(phrase, text)
         self.assertFalse(text.lstrip().startswith("-"))
@@ -41,12 +44,12 @@ class PromptHashTest(unittest.TestCase):
     def test_vendored_bytes_match_us_hamexam_when_that_checkout_exists(self):
         override = os.environ.get("US_HAMEXAM_ROOT")
         if override:
-            sibling = Path(override) / "tools" / "india-review" / "prompt-v3.txt"
+            sibling = Path(override) / "tools" / "india-review" / "prompt-v4.txt"
         else:
-            sibling = support.ROOT.parent / "us-hamexam" / "tools" / "india-review" / "prompt-v3.txt"
+            sibling = support.ROOT.parent / "us-hamexam" / "tools" / "india-review" / "prompt-v4.txt"
         if not sibling.is_file():
             self.skipTest(
-                "us-hamexam prompt-v3.txt is not present. The vendored template is still hashed on its own. "
+                "us-hamexam prompt-v4.txt is not present. The vendored template is still hashed on its own. "
                 "Set US_HAMEXAM_ROOT to compare bytes."
             )
         self.assertEqual(PROMPT_PATH.read_bytes(), sibling.read_bytes())

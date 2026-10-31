@@ -67,12 +67,13 @@ def write_runtime(
         "ident = match.group(1)\n"
         "json.dump({\n"
         "    'id': ident,\n"
-        "    'syllabusRelevant': True,\n"
+        "    'syllabusRelevant': False,\n"
         "    'indianTopic': 'electrical principles',\n"
         "    'recommendation': 'keep',\n"
         "    'jurisdictionRisk': 'none',\n"
         "    'figureRightsWarning': 'none',\n"
         "    'rationale': 'Advisory only: stub; this is not publication approval.',\n"
+        "    'syllabusCodes': [],\n"
         "}, sys.stdout)\n" + trailer
     )
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -283,6 +284,10 @@ class BitNetAdapterTest(unittest.TestCase):
             schema = json.loads(OUTPUT_JSON_SCHEMA_TEXT)
             self.assertEqual(set(schema["required"]), set(OUTPUT_KEYS))
             self.assertFalse(schema["additionalProperties"])
+            self.assertEqual(
+                schema["properties"]["syllabusCodes"],
+                {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": True},
+            )
             # With a record id, the schema constrains id to that exact value
             # instead of the generic any-nonempty-string fallback above.
             argv_for_record, _ = build_argv(

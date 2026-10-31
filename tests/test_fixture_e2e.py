@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import support
 
 from local_llm_review.protocol import parse_model_output
-from local_llm_review.runtimes.fixture import classify
+from local_llm_review.runtimes.fixture import EXAMPLE_CODES, FIXED_EXAMPLE_CODE, classify
 
 
 class FixtureEndToEndTest(unittest.TestCase):
@@ -22,7 +22,22 @@ class FixtureEndToEndTest(unittest.TestCase):
         rows = [json.loads(line) for line in module.stdout.decode().splitlines()]
         self.assertEqual([row["id"] for row in rows], ["SYN01", "SYN02"])
         for row, ident in zip(rows, ["SYN01", "SYN02"]):
-            parse_model_output(json.dumps(row), expected_id=ident)
+            parse_model_output(json.dumps(row), expected_id=ident, allowed_codes=EXAMPLE_CODES)
+        # Stage 8F2: relevant fixture records carry the fixed built-in
+        # example code; the guard-exempt high-risk case is covered below.
+        self.assertEqual(rows[0]["syllabusCodes"], [FIXED_EXAMPLE_CODE])
+
+    def test_fixture_syllabus_codes_are_deterministic(self):
+        # Determinism rule (Stage 8F2): [] when the record classifies as not
+        # syllabus-relevant, otherwise the single fixed built-in example
+        # code -- never candidate text.
+        relevant = classify(support.candidate("SYN01"))
+        not_relevant = classify(
+            support.candidate("SYN02", question="What does FCC Part 97 require of stations?")
+        )
+        self.assertEqual(relevant["syllabusCodes"], [FIXED_EXAMPLE_CODE])
+        self.assertEqual(not_relevant["syllabusCodes"], [])
+        self.assertNotIn("SYN01", FIXED_EXAMPLE_CODE)
 
     def test_repeated_runs_are_byte_identical(self):
         stdin = support.PILOT.read_text(encoding="utf-8")

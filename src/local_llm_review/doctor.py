@@ -12,7 +12,7 @@ from local_llm_review.errors import ReviewError
 from local_llm_review.prompt import PROMPT_VERSION, prompt_hash, render_prompt
 from local_llm_review.protocol import parse_model_output
 from local_llm_review.runtimes.bitnet import verify_bitnet
-from local_llm_review.runtimes.fixture import FixtureRuntime, classify
+from local_llm_review.runtimes.fixture import EXAMPLE_CODES, FixtureRuntime, classify
 
 _SAMPLE = {
     "id": "DOCTOR",
@@ -45,7 +45,11 @@ def _fixture_line() -> str:
     rendered = render_prompt(_SAMPLE)
     if "__CANDIDATE_JSON__" in rendered:
         raise ReviewError("prompt placeholder was not substituted")
-    parse_model_output(runtime.complete(candidate=_SAMPLE, prompt=rendered, settings=None), expected_id="DOCTOR")
+    parse_model_output(
+        runtime.complete(candidate=_SAMPLE, prompt=rendered, settings=None),
+        expected_id="DOCTOR",
+        allowed_codes=EXAMPLE_CODES,
+    )
     if record["recommendation"] != "keep":
         raise ReviewError("fixture doctor sample did not classify as keep")
     return "ready"

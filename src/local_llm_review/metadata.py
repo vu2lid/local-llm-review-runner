@@ -18,6 +18,7 @@ METADATA_KEYS = (
     "modelPathLabel",
     "promptVersion",
     "promptHash",
+    "syllabusManifest",
     "settings",
     "inputCount",
     "outputCount",
@@ -92,7 +93,17 @@ def build_metadata(
     output_count: int,
     failure_count: int,
     elapsed_ms: int,
+    syllabus_manifest: Any = None,
 ) -> dict[str, Any]:
+    if syllabus_manifest is None:
+        manifest_document = None
+    else:
+        manifest_document = {
+            "path": syllabus_manifest.path,
+            "schemaVersion": syllabus_manifest.schema_version,
+            "sha256": syllabus_manifest.sha256,
+            "codeCount": len(syllabus_manifest.codes),
+        }
     document = {
         "runnerVersion": __version__,
         "runtime": runtime,
@@ -100,6 +111,7 @@ def build_metadata(
         "modelPathLabel": model_path_label,
         "promptVersion": PROMPT_VERSION,
         "promptHash": prompt_hash(),
+        "syllabusManifest": manifest_document,
         "settings": settings_document(settings, info),
         "inputCount": input_count,
         "outputCount": output_count,

@@ -1,6 +1,6 @@
-# Compatibility with us-hamexam Stage 8E1/8E2
+# Compatibility with us-hamexam Stage 8F2
 
-This runner does not import `us-hamexam` and does not write into it. The JSONL below is the contract `scripts/review-pipeline.js` enforces in `validateCandidate`, `validateModelRecord`, and `createManifest` for schemaVersion 2. Field names here match that code as reviewed on 2026-10-12.
+This runner does not import `us-hamexam` and does not write into it. The JSONL below is the contract `scripts/review-pipeline.js` enforces in `validateCandidate`, `validateModelRecord`, and `createManifest` for schemaVersion 3 (model record contract v3). Field names here match that code as reviewed on 2026-10-28.
 
 us-hamexam stays unchanged until someone later points its command path or docs at this runner.
 
@@ -38,10 +38,15 @@ Exactly one object per input, same order, same ids. `validateModelRecord` requir
 | `jurisdictionRisk` | `none`, `low`, `medium`, or `high` |
 | `figureRightsWarning` | `none` or `warning` |
 | `rationale` | non-empty string |
+| `syllabusCodes` | array of codes from the syllabus manifest; unique, non-empty strings. Required to be non-empty when `syllabusRelevant` is true; must be empty when it is false (a non-empty list there is a cross-field contradiction) |
+
+The manifest is supplied to a run with `run --syllabus-manifest <path>` (top-level object with a `topics` array; each topic has a unique non-empty `code` and a `title`). Validation is fail-closed: an unknown code is rejected with a diagnostic naming the code and the manifest path, and a record carrying codes when the run loaded no manifest fails the run entirely (empty stdout, non-zero exit). The one exception is the fixture runtime, a development double whose records draw from its own pinned built-in example code set. The manifest's path, schemaVersion, sha256, and code count land in the metadata JSON under `syllabusManifest` (null when no manifest was given).
 
 `createManifest` also rejects duplicate output ids and a set of ids that does not cover the candidates exactly (missing or extra records). This runner fails closed on those cases and writes no stdout, so a partial file cannot be mistaken for a manifest input.
 
 Human decisions remain `pending` until a person acts in the us-hamexam review UI. Nothing in this output approves a question for publication or claims official ASOC status.
+
+The 8-key contract is pinned by `fixtures/model-record-contract-v3.json` (sorted key set, validation rules as data, an inline example manifest, one worked example record, and deliberately-broken variants with their expected errors). `tests/test_model_record_contract.py` always runs, so CI detects contract drift without the sibling checkout; when the sibling and node are present it additionally validates the example record through us-hamexam's real `validateModelRecord`.
 
 ## The command us-hamexam should call
 
@@ -88,13 +93,13 @@ Replace `--runtime fixture` with the BitNet invocation from [SETUP.md](SETUP.md)
 
 ## Prompt hash
 
-This runner's template is `india-review-prompt-v3` (`src/local_llm_review/prompts/india-review-prompt-v3.txt`). The file is a byte copy of us-hamexam `tools/india-review/prompt-v3.txt`. `promptHash` in the metadata file is the sha256 of those bytes, so it matches the `promptHash` us-hamexam stores on a manifest or pilot report from that same template.
+This runner's template is `india-review-prompt-v4` (`src/local_llm_review/prompts/india-review-prompt-v4.txt`). The file is a byte copy of us-hamexam `tools/india-review/prompt-v4.txt`. `promptHash` in the metadata file is the sha256 of those bytes, so it matches the `promptHash` us-hamexam stores on a manifest or pilot report from that same template.
 
-Current digest: `278f86d7a8746fa86d49161ebff3844ae941f0162e68189a33518d078b599815`.
+Current digest: `2ababd33d3e1d573730fb3c9ba5f7057fb39896c1a7c4a3eb1678d31b57e48c0`.
 
 Do not reword the template in this repository alone. A prompt change has to land in both files and keep a single version string.
 
-v3 is retained as EXPERIMENTAL, not claimed as an improvement: the 2026-10-14 Qwen2.5-1.5B pilot produced fabricated or self-contradictory rationales on 7 of 19 universal questions and 2 truncation failures. Separately, the deterministic jurisdiction guard in this runner fires before any runtime invocation for non-fixture runtimes and its `reject`/`high` record is emitted without consulting the model, so model output stays advisory and can never override a guard rejection; the runner's strict validator also rejects any model record pairing `jurisdictionRisk: "high"` with `recommendation: "keep"`.
+v4 (Stage 8F2) adds the `syllabusCodes` array to the model record contract and its own syllabus-code instructions; v4's quality is unevaluated and no improvement is claimed. The dated evaluation below was run under the v3 prompt and speaks only about v3: the 2026-10-14 Qwen2.5-1.5B pilot produced fabricated or self-contradictory rationales on 7 of 19 universal questions and 2 truncation failures. Separately, the deterministic jurisdiction guard in this runner fires before any runtime invocation for non-fixture runtimes and its `reject`/`high` record is emitted without consulting the model, so model output stays advisory and can never override a guard rejection; the runner's strict validator also rejects any model record pairing `jurisdictionRisk: "high"` with `recommendation: "keep"`.
 
 ## Metadata
 
@@ -106,8 +111,9 @@ Written only to `--metadata`, never to stdout:
   "runtime": "fixture",
   "modelId": "fixture",
   "modelPathLabel": "fixture",
-  "promptVersion": "india-review-prompt-v3",
+  "promptVersion": "india-review-prompt-v4",
   "promptHash": "<sha256 of the template file>",
+  "syllabusManifest": null,
   "settings": {},
   "inputCount": 25,
   "outputCount": 25,
@@ -115,6 +121,8 @@ Written only to `--metadata`, never to stdout:
   "elapsedMs": 0
 }
 ```
+
+`syllabusManifest` is null unless `run --syllabus-manifest <path>` was given; then it holds `path`, `schemaVersion`, `sha256`, and `codeCount`.
 
 `settings` holds temperature, seed, context length, token limit, threads, timeout, whether the seed flag was actually passed, the flags that were passed, and `supportClaimed`. For the fixture, `supportClaimed` is false because the fixture is not BitNet. For a BitNet run that was allowed to start, `supportClaimed` is true.
 
